@@ -50,8 +50,77 @@ namespace JWorkLog
 
     public partial class Fields
     {
+        [JsonProperty("summary")]
+        public string Summary { get; set; }
+
+        [JsonProperty("timetracking")]
+        public Timetracking Timetracking { get; set; }
+
+        [JsonProperty("status")]
+        public Status Status { get; set; }
+
         [JsonProperty("worklog")]
         public FieldsWorklog Worklog { get; set; }
+    }
+
+    public partial class Status
+    {
+        [JsonProperty("self")]
+        public string Self { get; set; }
+
+        [JsonProperty("description")]
+        public string Description { get; set; }
+
+        [JsonProperty("iconUrl")]
+        public string IconUrl { get; set; }
+
+        [JsonProperty("name")]
+        public string Name { get; set; }
+
+        [JsonProperty("id")]
+        public string Id { get; set; }
+
+        [JsonProperty("statusCategory")]
+        public StatusCategory StatusCategory { get; set; }
+    }
+
+    public partial class StatusCategory
+    {
+        [JsonProperty("self")]
+        public string Self { get; set; }
+
+        [JsonProperty("id")]
+        public long Id { get; set; }
+
+        [JsonProperty("key")]
+        public string Key { get; set; }
+
+        [JsonProperty("colorName")]
+        public string ColorName { get; set; }
+
+        [JsonProperty("name")]
+        public string Name { get; set; }
+    }
+
+    public partial class Timetracking
+    {
+        [JsonProperty("originalEstimate")]
+        public string OriginalEstimate { get; set; }
+
+        [JsonProperty("remainingEstimate")]
+        public string RemainingEstimate { get; set; }
+
+        [JsonProperty("timeSpent")]
+        public string TimeSpent { get; set; }
+
+        [JsonProperty("originalEstimateSeconds")]
+        public long? OriginalEstimateSeconds { get; set; }
+
+        [JsonProperty("remainingEstimateSeconds")]
+        public long? RemainingEstimateSeconds { get; set; }
+
+        [JsonProperty("timeSpentSeconds")]
+        public long? TimeSpentSeconds { get; set; }
     }
 
     public partial class FieldsWorklog
@@ -75,10 +144,10 @@ namespace JWorkLog
         public string Self { get; set; }
 
         [JsonProperty("author")]
-        public UserInfo Author { get; set; }
+        public User Author { get; set; }
 
         [JsonProperty("updateAuthor")]
-        public UserInfo UpdateAuthor { get; set; }
+        public User UpdateAuthor { get; set; }
 
         [JsonProperty("comment")]
         public string Comment { get; set; }
@@ -90,7 +159,7 @@ namespace JWorkLog
         public string Updated { get; set; }
 
         [JsonProperty("started")]
-        public string Started { get; set; }
+        public DateTime Started { get; set; }
 
         [JsonProperty("timeSpent")]
         public string TimeSpent { get; set; }
@@ -102,7 +171,7 @@ namespace JWorkLog
         public string Id { get; set; }
     }
 
-    public partial class UserInfo
+    public partial class User
     {
         [JsonProperty("self")]
         public string Self { get; set; }
@@ -126,5 +195,25 @@ namespace JWorkLog
     public partial class IssueList
     {
         public static IssueList FromJson(string json) => JsonConvert.DeserializeObject<IssueList>(json, JWorkLog.Converter.Settings);
+    }
+
+    public static class Serialize
+    {
+        public static string ToJson(this IssueList self) => JsonConvert.SerializeObject(self, JWorkLog.Converter.Settings);
+    }
+
+    internal class Converter
+    {
+        public static readonly JsonSerializerSettings Settings = new JsonSerializerSettings
+        {
+            MetadataPropertyHandling = MetadataPropertyHandling.Ignore,
+            DateParseHandling = DateParseHandling.None,
+            Converters = { 
+                new IsoDateTimeConverter()
+                {
+                    DateTimeStyles = DateTimeStyles.AssumeUniversal,
+                },
+            },
+        };
     }
 }

@@ -3,6 +3,7 @@ using Newtonsoft.Json;
 using System.Collections.Generic;
 using System.Linq;
 using System.Xml;
+using System.Text.RegularExpressions;
 
 namespace JWorkLog
 {
@@ -12,60 +13,111 @@ namespace JWorkLog
         static void Main(string[] args)
         {
             Issue[] issueList;
-            if (args.Length == 0)
-                issueList = GetIssueList("Labels=RunGroup");
-            else
-                issueList = GetIssueList(args[0]);
-
+            var query = "Labels=RunGroup";
+            int argType = 0;
+            int monthOffset = -1;
+            
+            foreach (var arg in args)
+            {
+                if (arg == "-q" || arg == "/q")
+                    argType = 1; // Specify query
+                else if (argType == 1)
+                    query = arg;
+                else if (arg == "-o")
+                    argType = 2; // Month offset
+                else if (argType == 2)
+                    monthOffset = int.Parse(arg);
+            }
+            issueList = GetIssueList(query);
+            var startDate = new DateTime(DateTime.Now.Year, DateTime.Now.Month, 1).AddMonths(monthOffset);
+            var endDate = startDate.AddMonths(1);
             var hours = new TimeTrack();
+            Regex reworkexp = new Regex(@"^rework\s*\(\s*(\d+)\s*\)", RegexOptions.IgnoreCase);
             foreach (var issue in issueList)
             {
                 if (issue.Fields.Worklog == null)
                     continue;
                 foreach (var workEntry in issue.Fields.Worklog.Worklogs)
                 {
+                    if (workEntry.Started < startDate || workEntry.Started >= endDate)
+                        continue;
                     if (!hours.TryGetValue(workEntry.Author.DisplayName, out IssueEntries userIssues))
                         hours.Add(workEntry.Author.DisplayName,
                             userIssues = new IssueEntries());
-                    if (!userIssues.TryGetValue(issue.Key, out List<TimeEntry> issueTimes))
+                    if (!userIssues.TryGetValue(issue.Key, out IssueEntry issueTimes))
+                    {
                         userIssues.Add(issue.Key,
-                            issueTimes = new List<TimeEntry>());
+                            issueTimes = new IssueEntry() {
+                                Key=issue.Key,
+                                Summary=issue.Fields.Summary,
+                                Remarks=issue.Fields.Status.Name,
+                                EstimatedTime=TimeSpan.FromSeconds(issue.Fields.Timetracking.OriginalEstimateSeconds.GetValueOrDefault())
+                            });
+                    }
+                    var reworkSpec = reworkexp.Match(workEntry.Comment);
+                    int reworkCount = 0;
+                    bool IsRework = true;
+                    if (reworkSpec.Success)
+                    {
+                        reworkCount = int.Parse(reworkSpec.Groups[1].Captures[0].Value);
+                    } else if (workEntry.Comment.StartsWith("rework", StringComparison.InvariantCultureIgnoreCase))
+                    {
+                        reworkCount = 1;
+                    } else if (workEntry.Comment.IndexOf("rework", StringComparison.InvariantCultureIgnoreCase) >= 0)
+                    {
+                    }
+                    else IsRework = false;
+
                     issueTimes.Add(new TimeEntry() {
-                        Start = Convert.ToDateTime(workEntry.Started),
+                        AddReworks = reworkCount,
+                        IsRework = IsRework,
+                        Start = workEntry.Started,
                         Length =TimeSpan.FromSeconds(workEntry.TimeSpentSeconds)
                     });
                 }
             }
 
-            Console.Write("Developer,Issue");
-            for(int monthIndex=0; monthIndex < 12; monthIndex++)
-                Console.Write("," + System.Globalization.CultureInfo.CurrentCulture.DateTimeFormat.MonthNames[monthIndex]);
-            Console.WriteLine();
+            Console.WriteLine("Sequence,Developer Name,Deliverable Name,Summary,No. of Peer Review Defects," +
+                "No. of Customer Review Defects,Planned Effort (Hrs.),Actual Effort (Hrs.) in {0}," +
+                "Rework Effort To Fix Peer Review Comments (Hrs.)," +
+                "Rework Effort To Fix Customer Review Comments (Hrs.),Remarks",
+                System.Globalization.CultureInfo.CurrentCulture.DateTimeFormat.GetMonthName(startDate.Month));
+
+            int sequence = 0;
             foreach(var userIssue in hours)
             {
-                Console.WriteLine(userIssue.Key);
                 foreach(var issueTime in userIssue.Value)
                 {
-                    Console.Write("," + issueTime.Key);
-                    var byMonth = issueTime.Value.GroupBy((t) => t.Start.Month, (t) => t.Length).ToDictionary((m) => m.Key);
-                    for(int month=1; month<=12; month++)
+                    Console.Write($"{++sequence},{userIssue.Key},{issueTime.Key},{issueTime.Value.Summary}");
+                    TimeEntry normal = new TimeEntry(), rework = new TimeEntry();
+                    int reworkCount = 0;
+                    foreach(var entry in issueTime.Value)
                     {
-                        if (byMonth.ContainsKey(month))
-                            Console.Write(",{0}", byMonth[month].Sum((t) => t.TotalHours));
+                        if (entry.IsRework)
+                            rework.Length += entry.Length;
                         else
-                            Console.Write(",");
+                            normal.Length += entry.Length;
+                        reworkCount += entry.AddReworks;
                     }
-                    Console.WriteLine();
+                    Console.Write($",{reworkCount},0,{issueTime.Value.EstimatedTime.TotalHours}");
+                    Console.Write($",{normal.Length.TotalHours},{rework.Length.TotalHours}");
+                    Console.WriteLine($",0,{issueTime.Value.Remarks}");
                 }
             }
         }
 
         static Issue[] GetIssueList(string query)
         {
-            string search = apiRoot + $"search?jql={query}&fields=key,worklog";
+            string search = apiRoot + $"search?jql={query}&fields=key,worklog,timetracking,summary,status&maxResults=200";
             var wc = new System.Net.WebClient();
             var jsonIssues = wc.DownloadString(search);
-            return IssueList.FromJson(jsonIssues).Issues;
+            var result = IssueList.FromJson(jsonIssues);
+            if (result.MaxResults < result.Total)
+            {
+                Console.WriteLine($"WARNING: Number of results {result.Total} exceeded max {result.MaxResults}.");
+                Console.WriteLine("Results are incomplete.");
+            }
+            return result.Issues;
         }
     }
 
@@ -73,10 +125,20 @@ namespace JWorkLog
     {
     }
 
-    class IssueEntries : Dictionary<string, List<TimeEntry>> { }
-
-    struct TimeEntry
+    class IssueEntries : Dictionary<string, IssueEntry>
     {
+    }
+    class IssueEntry : List<TimeEntry>
+    {
+        public string Key { get; set; }
+        public string Summary { get; set; }
+        public string Remarks { get; set; }
+        public TimeSpan EstimatedTime { get; set; }
+    }
+    class TimeEntry
+    {
+        public bool IsRework;
+        public int AddReworks;
         public DateTime Start;
         public TimeSpan Length;
     }
