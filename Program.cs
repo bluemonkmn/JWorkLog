@@ -16,19 +16,41 @@ namespace JWorkLog
             var query = "Labels=RunGroup";
             int argType = 0;
             int monthOffset = -1;
+            bool verbose = false;
             
             foreach (var arg in args)
             {
                 if (arg == "-q" || arg == "/q")
                     argType = 1; // Specify query
+                else if (arg == "-o" || arg == "/o")
+                    argType = 2; // Month offset
+                else if (arg == "-v" || arg == "/v")
+                    verbose = true;
+                else if (arg == "-h" || arg == "--help" || arg == "/h" || arg == "/help" || arg == "/?" || arg == "-?")
+                {
+                    Console.WriteLine("JWorkLog [-q \"<JIRA query>\"] [-o <month offset>] [-h]\n"
+                        + "   -q   Specifies a JIRA query the same as JIRA's advanced view.\n"
+                        + "        The default query is Labels=RunGroups.\n"
+                        + "   -o   Specified month offset from current month. Default is -1.\n"
+                        + "   -h   Displays this help page.\n"
+                        + "   -v   Verbose includes query string and other info in output.\n\n"
+                        + "   Example: JWorkLog -q \"updated>=-8w AND project=HCM AND type=Bug AND component=\"GHR- Core HR\"\" -o -2 > output.csv");
+                    return;
+                }
                 else if (argType == 1)
                     query = arg;
-                else if (arg == "-o")
-                    argType = 2; // Month offset
                 else if (argType == 2)
                     monthOffset = int.Parse(arg);
             }
+            if (verbose)
+            {
+                Console.WriteLine($"Query=\"{query}\"");
+            }
             issueList = GetIssueList(query);
+            if (verbose)
+            {
+                Console.WriteLine($"{issueList.Length} issues queried.");
+            }
             var startDate = new DateTime(DateTime.Now.Year, DateTime.Now.Month, 1).AddMonths(monthOffset);
             var endDate = startDate.AddMonths(1);
             var hours = new TimeTrack();
