@@ -34,7 +34,7 @@ namespace JWorkLog
                         + "   -o   Specified month offset from current month. Default is -1.\n"
                         + "   -h   Displays this help page.\n"
                         + "   -v   Verbose includes query string and other info in output.\n\n"
-                        + "   Example: JWorkLog -q \"updated>=-8w AND project=HCM AND type=Bug AND component=\"GHR- Core HR\"\" -o -2 > output.csv");
+                        + "   Example: JWorkLog -q \"updated>=-8w AND project=HCM AND type=Bug AND component=\\\"GHR- Core HR\\\"\" -o -2 > output.csv");
                     return;
                 }
                 else if (argType == 1)
